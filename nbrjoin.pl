@@ -10,21 +10,31 @@ binmode STDOUT, ":utf8";
 binmode STDERR, ":utf8";
 
 my %d;
-my %actives;
+my %actives;  # not-yet-paired nodes
 my %edges;
 my %vertices;
-my $newnode = 0;
+my $newnode = 0;  # labels of interior nodes
 
-my %color;
 my %iso;
-open(COLORS, "<:utf8", "families.txt") or die "Could not open families.txt: $!";
+my %colorbyfam;
+my %colorbylang;
+
+open(COLORS, "<:utf8", "colors.txt") or die "Could not open colors.txt: $!";
 while (<COLORS>) {
 	chomp;
-	(my $langcode, my $isocode, my $familyname, my $c) = /^([^ ]+) ([^ ]+) (.*) ([^ ]+)$/;
-	$color{$langcode} = $c;
-	$iso{$langcode} = $isocode;
+	(my $familyname, my $c) = /^([^ ]+) ([^ ]+)$/;
+	$colorbyfam{$familyname} = $c;
 }
 close COLORS;
+
+open(LANGS, "<:utf8", "langs.txt") or die "Could not open langs.txt: $!";
+while (<LANGS>) {
+	chomp;
+	(my $langcode, my $isocode, my $familyname) = /^([^ ]+) ([^ ]+) ([^ ]+)$/;
+	$colorbylang{$langcode} = $colorbyfam{$familyname};
+	$iso{$langcode} = $isocode;
+}
+close LANGS;
 
 # come into this with a d; compute Q, find min pair, add node, recompute d's
 # keys of %actives are the as-yet unpaired nodes == labels on rows/cols of Q
@@ -43,10 +53,8 @@ sub compute_Q {
 	}
 	for my $i (keys %actives) {
 		for my $j (keys %actives) {
-			#if ($i lt $j and $d{"$i|$j"} < 150) {
 			if ($i lt $j) {
 				my $Qvalue = ($r-2)*$d{"$i|$j"} - $colsum{$i} - $colsum{$j};
-			#	print "Q($i,$j) = $Qvalue\n";
 				if ($Qvalue < $minQ) {
 					$minQ = $Qvalue;
 					$minL = $i;
@@ -87,27 +95,22 @@ sub compute_Q {
 
 my $first;
 chomp($first = <STDIN>);
-$first =~ s/^"X",//;
+$first =~ s/^[^,]+,//;
 my @langlist;
 for my $l (split(/,/,$first)) {
-	$l =~ s/^"//;
-	$l =~ s/"$//;
 	push @langlist, $l;
 	$vertices{$l}++;
 }
 
 while (<STDIN>) {
 	chomp;
-	(my $lang, my $cosines) = m/^"([^,"]+)"(,.+)$/;
+	(my $lang, my $cosines) = m/^([^,]+)(,.+)$/;
 	$actives{$lang} = 1;
 	for my $other (@langlist) {
-		$cosines =~ s/^,"([^,"]+)"//;
+		$cosines =~ s/^,([^,]+)//;
 		my $val = $1;
-		my $thedist;
-		if ($val eq '-') {
-			$thedist = 0;
-		}
-		else {
+		my $thedist = 0;
+		unless ($val eq '-') {
 			$thedist = acos($val);  # true distance in high dim S^n
 		}
 		$d{"$lang|$other"} = $thedist;
@@ -119,6 +122,9 @@ while (compute_Q()) {
 	1;
 }
 
+#my $url = 'http://www.ethnologue.com/show_language.asp?code=';
+my $url = 'http://www.sil.org/iso639-3/documentation.asp?id=';
+
 print "digraph G {\n";
 print "    edge [arrowhead=none];\n";
 for my $v (keys %vertices) {
@@ -126,19 +132,19 @@ for my $v (keys %vertices) {
 		print "   \"$v\" [shape=point];\n"
 	}
 	else {
-		my $c = $color{$v};
+		my $c = $colorbylang{$v};
 		my $iso = $iso{$v};
-		print "   \"$v\" [shape=box, style=filled, color=$c, label=\"$v\", URL=\"http://www.ethnologue.com/show_language.asp?code=$iso\"];\n"
+		print "   \"$v\" [shape=box, width=0.1, height=0.1, style=filled, color=$c, label=\"$v\", URL=\"$url$iso\", target=\"_blank\"];\n"
 	}
 }
 for my $e (keys %edges) {
 	my $toprint = $e;
 	$toprint =~ s/^([^|]+)\|(.+)$/"$1" -> "$2"/g;
 	my $len = $edges{$e};
-	if (abs($len) < 0.001) {  # acos(0.99) = 0.14153
+	if ($len < 0.001) {  # for perspective, acos(0.99) = 0.14153
 		$len = 0.001;
 	}
-	$len = sprintf("%.2f", 10*$len);
+	$len = sprintf("%.3f", 20*$len);
 	print "   $toprint [len=$len];\n"
 	#print "   $toprint [label=$len, len=$len];\n"
 }
