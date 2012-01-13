@@ -95,7 +95,7 @@ sub compute_Q {
 
 my $first;
 chomp($first = <STDIN>);
-$first =~ s/^[^,]+,//;
+$first =~ s/^[^,]*,//;
 my @langlist;
 for my $l (split(/,/,$first)) {
 	push @langlist, $l;
